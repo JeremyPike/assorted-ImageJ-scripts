@@ -61,14 +61,14 @@ HashMap map = settings.detectorFactory.getDefaultSettings();
 map.put('RADIUS', spotRadius);
 map.put('DO_MEDIAN_FILTERING', false);
 map.put('DO_SUBPIXEL_LOCALIZATION', false)
-map.put('THRESHOLD', spotThresh);
+map.put('THRESHOLD', 0.0d);
 
 // get current results table and reset
 ResultsTable rt = ResultsTable.getResultsTable();
 rt.reset();
 
 // reader to load specified file
-ImageProcessorReader r = new ImageProcessorReader(new ChannelSeparator(LociPrefs.makeImageReader()));
+ImageProcessorReader  r= new ImageProcessorReader(new ChannelSeparator(LociPrefs.makeImageReader()));
 // set up metadata reading
 OMEXMLServiceImpl OMEXMLService = new OMEXMLServiceImpl();
 r.setMetadataStore(OMEXMLService.createOMEXMLMetadata());
@@ -87,6 +87,8 @@ double numTilesPerWell =  numSeries / numWells;
 int numDapiSpots = 0;
 // variable to hold mean sum spot intensity in second channel for current well
 double meanTotalRedIntensity = 0;
+// variable to hold total red field intensity
+double fieldRedIntensity = 0;
 
 // loop through all tiles in files
 for (int i = 0; i < numSeries; i++) {
@@ -117,7 +119,10 @@ for (int i = 0; i < numSeries; i++) {
 	imp.setGlobalCalibration(cali);
 	// set imp title to series name
 	imp.setTitle(meta.getImageName(i));
-
+	// set imp to second channel for measurments
+	imp.setC(2);
+	// calculate the total field intenisty and add to sum
+	fieldRedIntensity += imp.getStatistics().mean * r.getSizeX() * r.getSizeY();
 	// point TrackMate to the first channel of the data
 	settings.setFrom(imp);
     map.put('TARGET_CHANNEL', 1);
@@ -188,12 +193,13 @@ for (int i = 0; i < numSeries; i++) {
 		rt.addValue("Well row ", wellRow + 1);
 		rt.addValue("Well column ", wellColumn + 1);
 		rt.addValue("Number of dapi spots", numDapiSpots);
-		rt.addValue("Mean total red intensity", meanTotalRedIntensity);
+		rt.addValue("Mean total red intensity in spots", meanTotalRedIntensity);
+		rt.addValue("Total field red intensity", fieldRedIntensity);
 
 		// reset spot and sum intensity counts
 		numDapiSpots = 0;
 		meanTotalRedIntensity = 0;
-
+		fieldRedIntensity = 0;
 		println("Finished processing well " + (wellInd + 1) + " of " + numWells);
 	}	
 	
