@@ -61,8 +61,8 @@ count = 0;
 // iterate through all files
 for (i = 0; i < fileNames.length; i = i + 1) {
 	
-		// if file is for the il36r channel
-		if (startsWith(fileNames[i], "cd31 and il-36R-pos_CY5") == true) {
+	// if file is for the il36r channel
+	if (startsWith(fileNames[i], "cd31 and il-36R-pos_CY5") == true) {
 		
 		//open, rename and close all channels apart from the red
 		open(fileNames[i]);
