@@ -38,22 +38,26 @@ import loci.formats.services.OMEXMLServiceImpl
 import loci.formats.meta.MetadataRetrieve
 
 // Ask user for a bunch of paramters
-#@ File(label="Select a directory containing the image files to process", style="directory") dirImages
-#@ File(label="Select a directory containing the probability ilastik files to process", style="directory") dirProbabilities
-#@ String(label="Specify a file extension for images", value="tif", persist=false) ext
-#@ String(label="Specify a matching term for probability files", value="_Probabilities.tif", persist=false) probMatch
+#@File(label="Select a directory containing the image files to process", style="directory") dirImages
+#@File(label="Select a directory containing the probability ilastik files to process", style="directory") dirProbabilities
+#@String(label="Specify a file extension for images", value="tif", persist=false) ext
+#@String(label="Specify a matching term for probability files", value="_Probabilities.tif", persist=false) probMatch
 #@Double(label="Specify minimum seed size (pixels)", value=5000, persist=false) minSeedSize
 #@Double(label="Specify minimum protrusion size (pixels)", value=100, persist=false) minProtrusionSize
 #@Double(label="Specify a structral element size for opening", value=30, persist=false) SESize
 #@Double(label="Specify a structral element size for seed dilation", value=10, persist=false) SESizeDil
-#@ boolean(label="Display results", value=false, persist=false) display
+#@boolean(label="Display results", value=false, persist=false) display
+#@boolean(label="Save results", value=true, persist=false) saveResults
+#@File(label="Select a ouput directory for the excel file", style="directory") dirOutput
 
 // create lists to hold output statistics
 ArrayList<String> filenamesArray = new ArrayList<String>()
+ArrayList<Double> seedCoreAreaArray = new ArrayList<Double>()
 ArrayList<Integer> numProtrusionsArray = new ArrayList<Integer>()
 ArrayList<Double> meanProtrusionLengthArray = new ArrayList<Double>()
 ArrayList<Integer> numJunctionsArray = new ArrayList<Integer>()
 ArrayList<Integer> numEndPointsArray = new ArrayList<Integer>()
+ArrayList<Double> meanEndPointDistArray = new ArrayList<Double>()
 ArrayList<Double> meanMaxEndPointDistArray = new ArrayList<Double>()
 ArrayList<Double> meanProtrsionAreaArray = new ArrayList<Double>()
 
@@ -63,7 +67,6 @@ ArrayList<Double> meanProtrsionAreaArray = new ArrayList<Double>()
 if (rm == null) {
 	rm = new RoiManager()
 }
-
 
 // list all files in input raw image directory
 File[] fileListImagesDir = dirImages.listFiles()
@@ -159,9 +162,18 @@ for (int i = 0; i < numImages; i++) {
 		IJ.run(centralSeedMask, "Gray Morphology", "radius=" + SESize + " type=circle operator=open")
 		// dilate central seed a bit, this helps to seperating srounts which touch at the base
 		IJ.run(centralSeedMask, "Gray Morphology", "radius=" + SESizeDil + " type=circle operator=dilate")
+		
+		// create ROI from central seed mask and measure area
+		IJ.run(centralSeedMask, "Create Selection", "")
+		IJ.run(centralSeedMask, "Make Inverse", "");
+		Roi centralSeedRoi = centralSeedMask.getRoi()
+		centralSeedRoi.setName("seed core")
+		seedCoreAreaArray.add(centralSeedMask.getStatistics().area)
+		IJ.run(centralSeedMask, "Select None", "");
+	
 		// create protrusion mask by subtracting the central seed mask from the seed mask
 		ImagePlus protusionMask = ic.run("Subtract create", seedMask, centralSeedMask)
-		
+
 		// reset the results table and ROI manager before finding protrusion ROIs
 		rt.reset()
 		rm.reset()
@@ -206,21 +218,22 @@ for (int i = 0; i < numImages; i++) {
 		Point[] maxEndPoints = new Point[numProtrusions]
 		// to store the corresponding distances 
 		int[] maxEndPointDist = new int[numProtrusions] 
+		// to store sum distance from end points to seed core
+		double endPointDistSum = 0
 		// loop through end points and protrusions
 		for (Point endPoint : endPoints) {
+			// retrieve value of distance map at this end point
+			float endPointDist =  Float.intBitsToFloat(centralSeedDistanceProc.getPixel(endPoint.x, endPoint.y))
+			endPointDistSum += endPointDist
 			for (int prot = 0; prot < numProtrusions; prot++) {
-				// if current end point is in current protrusion ROI
-				if (rm.getRoi(prot).contains(endPoint.x, endPoint.y)) {
-					// retrieve value of distance map at this end point
-					float endPointDist =  Float.intBitsToFloat(centralSeedDistanceProc.getPixel(endPoint.x, endPoint.y))
-					// if distance is larger than previously stored value for this protrusion update
-					if (endPointDist > maxEndPointDist[prot]) {
-						maxEndPointDist[prot] = endPointDist
-						maxEndPoints[prot] = endPoint
-					}
+				// if current end point is in current protrusion ROI and distance is larger than previously stored value for this protrusion update
+				if (rm.getRoi(prot).contains(endPoint.x, endPoint.y) && endPointDist > maxEndPointDist[prot]) {			
+					maxEndPointDist[prot] = endPointDist
+					maxEndPoints[prot] = endPoint
 				}
 			}
 		}
+		
 		// find the mean distance for the extremal end points and store in output list
 		double meanMaxEndPointDist = 0;
 		for (int dist : maxEndPointDist) 
@@ -244,7 +257,7 @@ for (int i = 0; i < numImages; i++) {
 		meanProtrusionLengthArray.add(totalProtrusionLength  / numProtrusions)
 		numJunctionsArray.add(numJunctions)
 		numEndPointsArray.add(numEndPoints)
-		
+		meanEndPointDistArray.add(endPointDistSum / numEndPoints)
 		// if user requested to inspect results
 		if (display) {
 
@@ -252,16 +265,15 @@ for (int i = 0; i < numImages; i++) {
 			rm.reset()
 			// create ROI from seed mask and add to ROI manager
 			IJ.run(seedMask, "Create Selection", "")
+			IJ.run(seedMask, "Make Inverse", "");
 			Roi seedRoi = seedMask.getRoi()
 			seedRoi.setName("seed")
 			rm.addRoi(seedRoi)
-			// create ROI from central seed mask and add to ROI manager
-			IJ.run(centralSeedMask, "Create Selection", "")
-			Roi centralSeedRoi = centralSeedMask.getRoi()
-			centralSeedRoi.setName("seed core")
+			// add central seed roi to ROI manager
 			rm.addRoi(centralSeedRoi)
 			// create ROI from protrusion mask and add to ROI manager
 			IJ.run(protusionMask, "Create Selection", "")
+			IJ.run(protusionMask, "Make Inverse", "");
 			Roi protrusionRoi = protusionMask.getRoi()
 			protrusionRoi.setName("protrusions")
 			rm.addRoi(protrusionRoi)
@@ -297,18 +309,22 @@ rt.reset()
 int numSeeds = filenamesArray.size()
 for (int i = 0; i < numSeeds; i++) {
 	rt.setValue("filename", i, filenamesArray.get(i))
+	rt.setValue("seed core area", i, seedCoreAreaArray.get(i))
 	rt.setValue("number of protrusions", i, numProtrusionsArray.get(i))
 	rt.setValue("number of endpoints", i, numEndPointsArray.get(i))
 	rt.setValue("number of junctions", i, numJunctionsArray.get(i))
 	rt.setValue("mean protrusion area", i, meanProtrsionAreaArray.get(i))
 	rt.setValue("mean protrusion length", i, meanProtrusionLengthArray.get(i))
+	rt.setValue("mean endpoint distance", i, meanEndPointDistArray.get(i))
 	rt.setValue("mean max endpoint distance", i, meanMaxEndPointDistArray.get(i))
-
+	
 }
 // show the results
-rt.show("Measurements")
+rt.show("Results")
 
-
+// if requested save results
+if (saveResults)
+	IJ.saveAs("Results", dirOutput.getAbsolutePath() + File.separator + "sproutMeasurements.csv");
 
 
 public ImagePlus loadProbabilityMap(File file) {
