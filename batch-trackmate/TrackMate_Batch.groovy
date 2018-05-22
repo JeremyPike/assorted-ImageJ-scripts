@@ -1,14 +1,4 @@
 
-// @File (label="Select a directory containing the files to process", style="directory") directory
-// @File (label="Select an output directory for the excel files", style="directory") outDirectory
-// @String(label="Specify a file extension", value="tif") ext
-// @Double(label="Specify spot radius (microns)", value=0.25) spotRadius
-// @Double(label="Specify quality threshold for spots", value=2000) spotThreshQual
-// @Double(label="Specify mean intensity threshold for spots", value=0) spotThreshMeanInt
-// @Double(label="Specify maximum track linking distance (microns)", value=0.1) maxLinkDist
-// @Boolean(label="Display tracks", value=false) display
-// @Boolean(label="Save spot statistics", value=true) save
-
 // Author: Jeremy Pike
 
 /*
@@ -46,6 +36,21 @@ import fiji.plugin.trackmate.Spot;
 
 import org.apache.commons.io.FileUtils
 
+
+#@File (label="Select a directory containing the files to process", style="directory") directory
+#@File (label="Select an output directory for the excel files", style="directory") outDirectory
+#@String(label="Specify a file extension", value="tif") ext
+#@Double(label="Specify spot radius (microns)", value=0.25) spotRadius
+#@Double(label="Specify quality threshold for spots", value=2000) spotThreshQual
+#@Double(label="Specify mean intensity threshold for spots", value=0) spotThreshMeanInt
+#@Double(label="Specify maximum track linking distance (microns)", value=0.1) maxLinkDist
+#@Double(label="Specify the max linking distance (gap closing)", value= 0.1) maxLinkingDistGC
+#@Integer(label="Specify the max gap in frames", value=2) maxFrameGap
+
+#@Boolean(label="Display tracks", value=false) display
+#@Boolean(label="Save spot statistics", value=true) save
+
+
 // create empty TrackMate Settings
 Settings settings = new Settings();
 // use a Laplacian of Gaussian detector
@@ -70,8 +75,8 @@ settings.trackerFactory = new SimpleSparseLAPTrackerFactory();
 HashMap trackMap = settings.trackerFactory.getDefaultSettings();
 trackMap.put('LINKING_MAX_DISTANCE', maxLinkDist);
 // no gap closing
-trackMap.put('GAP_CLOSING_MAX_DISTANCE', 0.0d);
-trackMap.put('MAX_FRAME_GAP', 0);
+trackMap.put('GAP_CLOSING_MAX_DISTANCE', maxLinkingDistGC);
+trackMap.put('MAX_FRAME_GAP', maxFrameGap);
 settings.trackerSettings = trackMap;
 
 // find all files in specified directory with specified extension
@@ -175,7 +180,7 @@ public ResultsTable calcAllSpotFeatures(TrackMate trackmate) {
 				spotTable.addValue( "TRACK_ID", "" + trackID.intValue() );
 			}
 			else {
-				spotTable.addValue( "TRACK_ID", "None" );
+				spotTable.addValue( "TRACK_ID", -1);
 			}
 			// add remaining spot features to table
 			for (String feature : spotFeatures ) {
